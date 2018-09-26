@@ -20,13 +20,14 @@
 char gAPP_mainMenu[] =
 {
 	"\r\n ========="
-	"\r\n MainMenu"
+	"\r\n MainMenu "
 	"\r\n ========="
 	"\r\n 0: Stop test send"
 	"\r\n 1: Start test send ch0"
 	"\r\n 2: Cycle test send ch0"
-	"\r\n 1: Start test send ch1"
-	"\r\n 2: Cycle test send ch1"
+	"\r\n 3: Start test send ch1"
+	"\r\n 4: Cycle test send ch1"
+	"\r\n 5: Swtich sync speed"
 	"\r\n e: Exit"
 	"\r\n"
 	"\r\n Enter Choice: "
@@ -46,7 +47,7 @@ int main(int argc, char **argv)
 {
 	Bool ui_loop = TRUE;
 	char ch = '0';
-	int i, uart=0, mode=0;
+	int i, uart=0, mode=0, ispeed=2;
 
 	for(i=1; i<argc; i++)
 	{
@@ -66,6 +67,7 @@ int main(int argc, char **argv)
 
 	while (ui_loop)
 	{
+		printf( "\r\n   Build date: %s %s", __DATE__, __TIME__);
 		printf(gAPP_mainMenu);
 
 		if (ch == '0')
@@ -93,6 +95,12 @@ int main(int argc, char **argv)
 			testSnd(1, 2);
 		}
 		
+		if (ch == '5')
+		{
+			ispeed = (ispeed+1)%3;		// switch speed 2M/4M/8M
+			testSpeed(ispeed);
+		}
+
 		if (ch == 'e')
 		{
 			ui_loop = FALSE;

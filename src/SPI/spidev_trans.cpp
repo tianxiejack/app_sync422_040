@@ -2,9 +2,6 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
-#define Tranverse32(X) ((((Uint32)(X)&0xff000000)>>24)|(((Uint32)(X)&0x00ff0000)>>8)|(((Uint32)(X)&0x0000ff00)<<8)|(((Uint32)(X)&0x000000ff)<<24))
-//Tranverse32 -----  switch 32bit data from Little-endian  to Big-endian
-
 //FILE *liangfp=NULL; //by liang
 
 static void pabort(const char *s)
