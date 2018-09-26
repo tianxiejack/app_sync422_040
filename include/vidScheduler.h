@@ -8,6 +8,7 @@
 * History:     //  历史修改记录
 * <author> 		<time> 			<version > 		<description>
 * xavier  		2015年9月7日          V1.00    		build this module
+* aloysa		20180828						modify
 ********************************************************************************/
 
 #ifndef _VID_SCHEDULER_H_

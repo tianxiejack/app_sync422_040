@@ -2,7 +2,7 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
-//FILE *liangfp=NULL; //by liang
+//FILE *savefp=NULL; //save data before send to spi
 
 static void pabort(const char *s)
 {
@@ -10,23 +10,17 @@ static void pabort(const char *s)
 	abort();
 }
 
-//static const char *device = "/dev/spidev0.0";
-//static uint8_t mode;
-//static uint8_t bits = 32;
-//static uint32_t speed = 20000000;
-//static uint16_t delay = 0;
-
 int spi_transfer(int fd, struct spi_ioc_transfer *tr)
 {
 	int ret;
 #if 0
-	/****liang start*****/
-   	 if(liangfp==NULL)
-    		liangfp = fopen("app_trans.ioc","wb");
-   	 fwrite((const void *)(tr->tx_buf), tr->len, 1, liangfp);
-   	 //fflush(liangfp);
+	/****save data before send to spi*************/
+   	 if(savefp==NULL)
+    		savefp = fopen("app_trans.ioc","wb");
+   	 fwrite((const void *)(tr->tx_buf), tr->len, 1, savefp);
+   	 //fflush(savefp);
    	 //printf("\n------had finished one spi_ioc_transfer----\n");
-	 /****liang end*****/
+	 /****save data before send to spi***end*******/
 #endif
 	ret = ioctl(fd, SPI_IOC_MESSAGE(1), tr);
 	if (ret < 1)
@@ -35,10 +29,10 @@ int spi_transfer(int fd, struct spi_ioc_transfer *tr)
 	return ret;
 }
 
-int spi_DataTransform(Uint8 *dst, Uint8 *src, int srcNum)
+int spi_dataTransform1(unsigned char *dst, unsigned char *src, int srcNum)
 {
-	Uint32 *p_dst	= (Uint32 *)dst;
-	Uint16 *p_src 	= (Uint16 *)src;
+	unsigned int *p_dst	= (unsigned int *)dst;
+	unsigned short *p_src 	= (unsigned short *)src;
 	int i, j, Excess_num;
 /*
 	if(srcNum%2)
@@ -47,19 +41,19 @@ int spi_DataTransform(Uint8 *dst, Uint8 *src, int srcNum)
 		srcNum += 1;
 	}
 */
-	int RunTimes = srcNum/sizeof(Uint16)/8;
-	Excess_num	 = (srcNum - RunTimes*sizeof(Uint16)*8)/sizeof(Uint16);
+	int RunTimes = srcNum/sizeof(unsigned short)/8;
+	Excess_num	 = (srcNum - RunTimes*sizeof(unsigned short)*8)/sizeof(unsigned short);
 
 	for(i=0; i<RunTimes; i++)
 	{
-		p_dst[0] = Tranverse32( (Uint32)((0x0150000 | p_src[0])<<4) );
-		p_dst[1] = Tranverse32( (Uint32)((0x0150000 | p_src[1])<<4) );
-		p_dst[2] = Tranverse32( (Uint32)((0x0150000 | p_src[2])<<4) );
-		p_dst[3] = Tranverse32( (Uint32)((0x0150000 | p_src[3])<<4) );
-		p_dst[4] = Tranverse32( (Uint32)((0x0150000 | p_src[4])<<4) );
-		p_dst[5] = Tranverse32( (Uint32)((0x0150000 | p_src[5])<<4) );
-		p_dst[6] = Tranverse32( (Uint32)((0x0150000 | p_src[6])<<4) );
-		p_dst[7] = Tranverse32( (Uint32)((0x0150000 | p_src[7])<<4) );
+		p_dst[0] = Tranverse32( (unsigned int)((0x0150000 | p_src[0])<<4) );
+		p_dst[1] = Tranverse32( (unsigned int)((0x0150000 | p_src[1])<<4) );
+		p_dst[2] = Tranverse32( (unsigned int)((0x0150000 | p_src[2])<<4) );
+		p_dst[3] = Tranverse32( (unsigned int)((0x0150000 | p_src[3])<<4) );
+		p_dst[4] = Tranverse32( (unsigned int)((0x0150000 | p_src[4])<<4) );
+		p_dst[5] = Tranverse32( (unsigned int)((0x0150000 | p_src[5])<<4) );
+		p_dst[6] = Tranverse32( (unsigned int)((0x0150000 | p_src[6])<<4) );
+		p_dst[7] = Tranverse32( (unsigned int)((0x0150000 | p_src[7])<<4) );
 
 		p_dst += 8;
 		p_src += 8;
@@ -67,11 +61,32 @@ int spi_DataTransform(Uint8 *dst, Uint8 *src, int srcNum)
 
 	for(j=0; j<Excess_num; j++)
 	{
-		p_dst[0] = Tranverse32( (Uint32)((0x0150000 | p_src[0])<<4) );
+		p_dst[0] = Tranverse32( (unsigned int)((0x0150000 | p_src[0])<<4) );
 		p_dst += 1;
 		p_src += 1;
 	}
 	return (srcNum)*2;
+
+}
+
+int spi_dataTransform2(unsigned char *dst, unsigned char *src, int srcNum)
+{
+	unsigned int *p_dst	= (unsigned int *)dst;
+	unsigned int *p_src 	= (unsigned int *)src;
+	int i, j, Excess_num;
+
+	int RunTimes = srcNum/4;
+
+	while(RunTimes)
+	{
+		//p_dst[0] = Tranverse32( (unsigned int)(p_src[0]) );
+		p_dst[0] = (unsigned int)(p_src[0]);
+		p_dst += 1;
+		p_src += 1;
+		--RunTimes;
+	}	
+	return (srcNum);	
+
 }
 
 #if 0
