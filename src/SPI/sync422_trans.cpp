@@ -21,7 +21,7 @@
 
 #define DATAFORMAT1	1
 #define DATAFORMAT2	2
-#define DATAFORMAT	DATAFORMAT1
+#define DATAFORMAT	DATAFORMAT2
 
 #define TIME_OUT	1000
 #define PRESSUREMODE	0
@@ -161,10 +161,10 @@ static int spi_dev_write_withdelay(long context, unsigned char *buf, int len)
 	memset(p_buf+numS, 0xFF, TailLength);
 	numS += TailLength;
 	#elif (SPIDEVFORMAT == SPIDEVFORMAT2)
-	if(!(numS%4) )
-		TailLength = 16;  //16bytes
-	else
+	if(numS % 4)
 		TailLength = 20-(numS%4); //TailLength = 16+4-(numS%4); //16bytes
+	else
+		TailLength = 16;  //16bytes
 	memset(p_buf+numS, 0xFF, TailLength);
 	numS += TailLength;
 	#endif
@@ -600,7 +600,7 @@ static void* sync422_spi_sendTask(void *pPrm)
 			#elif  (DATAFORMAT == DATAFORMAT2)
 			//////////////////////////////////////////
 			numP = numS / 252;	// len of ENC_USR54HEADER.data
-			if((numS % 252) > 0)
+			if(numS % 252)
 				numP += 1;
 			if((numP*UsrHeadLen) >= RING_VIDEO_BUFLEN)
 			{
@@ -629,6 +629,8 @@ static void* sync422_spi_sendTask(void *pPrm)
 				{
 					// last piece
 					UsrTailLen = (inLen-236) % 252;
+					if(UsrTailLen == 0)
+						UsrTailLen = 252;
 					memset(pObj->UsrHead.data, 0xFF, 252);
 					memcpy(pObj->UsrHead.data, p_bufPiece, UsrTailLen);
 				}
