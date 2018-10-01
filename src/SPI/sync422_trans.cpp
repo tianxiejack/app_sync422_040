@@ -915,7 +915,7 @@ int sync422_ontime_ctrl(CTRL_T icmd, int dtype, int iprm)
 	return 0;
 }
 
-#define DEBUGMODE	0
+#define DEBUGMODE	1
 #if DEBUGMODE
 static OSA_ThrHndl demoTskHndl[2];
 static bool demoTskLoop[2];
