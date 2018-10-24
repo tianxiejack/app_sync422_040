@@ -23,8 +23,8 @@ int spi_transfer(int fd, struct spi_ioc_transfer *tr)
 	 /****save data before send to spi***end*******/
 #endif
 	ret = ioctl(fd, SPI_IOC_MESSAGE(1), tr);
-	if (ret < 1)
-		pabort("can't send spi message");
+	//if (ret < 1)
+	//	pabort("can't send spi message");
 
 	return ret;
 }

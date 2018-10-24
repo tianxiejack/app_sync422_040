@@ -99,7 +99,8 @@ typedef struct
 #if (SPIDEVFORMAT == SPIDEVFORMAT1)
 #define SPI_BUFFER_SIZE				(4096)
 #elif (SPIDEVFORMAT == SPIDEVFORMAT2)
-#define SPI_BUFFER_SIZE				(2560)// 2.5KB     
+#define SPI_BUFFER_SIZE				(2560)// divide pack 2.5KB
+//#define SPI_BUFFER_SIZE				(4096)// divide pack 4KB
 #endif
 #define SPI_IOC_MAGIC			'k'
 /*set uplimit. downlimit. clear FPGA_FIFO. dangwei  by liang*/
@@ -121,6 +122,8 @@ static int iChangeSpeed[SYNC422_PORTNUM]={0};
 static Sync422_TransObj g_sync422_TransObj[SYNC422_PORTNUM];
 static Scheduler_arg rdSchePrm;
 
+extern int sync422_spi_devreset(int uart);
+
 static void delay1ms(void)
 {
 	struct timeval timeout;
@@ -132,6 +135,160 @@ static void delay1ms(void)
 }
 
 static int spi_dev_write_withdelay(long context, unsigned char *buf, int len)
+{
+	Sync422_TransObj *pObj = (Sync422_TransObj *)context;
+	int SendCnt = 0, TransNum = 0, errCnt = 0, SendTotal = 0, ispiRtn = 0;
+	int TailLength = 0, numS = 0, waitMs = 0;
+	char caCrc = 0;
+	Uint32 t1=0, t2=0;
+
+	if(!buf)
+	{
+		printf(" empty buf canncel sync422 send ! \n");
+		return -1;
+	}
+	if(len == 0)
+		return 0;
+
+	Uint8 *p_buf = (Uint8 *)pObj->data_buf;
+	if(buf != p_buf)
+		memcpy(p_buf, buf, len);
+	numS = len;
+
+	// add packet interval
+	#if (SPIDEVFORMAT == SPIDEVFORMAT1)
+	if(len % 2)
+		TailLength = 15;
+	else
+		TailLength = 16;
+	memset(p_buf+numS, 0xFF, TailLength);
+	numS += TailLength;
+	#elif (SPIDEVFORMAT == SPIDEVFORMAT2)
+	if(numS % 4)
+	{
+		TailLength = 20-(numS%4); //TailLength = 16+4-(numS%4); //16bytes
+		memset(p_buf+numS, 0xFF, TailLength);
+		numS += TailLength;
+	}
+	#endif
+	// add packet interval end
+
+#if SPIDEVON
+	t1=OSA_getCurTimeInMsec();
+	#if (SPIDEVFORMAT == SPIDEVFORMAT1)
+	while(numS > SPI_BUFFER_SIZE/2)
+	{
+		TransNum = spi_dataTransform1(pObj->tx_buf, (Uint8 *)(p_buf+SendCnt*SPI_BUFFER_SIZE/2), SPI_BUFFER_SIZE/2);
+		pObj->spiTrans.len		= TransNum;
+		ispiRtn = spi_transfer(pObj->fd, &pObj->spiTrans);
+		if(ispiRtn != TransNum)
+		{
+			errCnt++;
+			if(ispiRtn == 1 || ispiRtn == 0)
+			{
+				printf(" spi[%d] spi transfer block code %d, reset fifo\n", pObj->spiuart, ispiRtn);
+				sync422_spi_devreset(pObj->spiuart);
+				numS = 0;
+				break;
+			}
+		}
+		SendCnt++;
+		numS -= SPI_BUFFER_SIZE/2;
+		SendTotal += SPI_BUFFER_SIZE/2;
+	}
+	if(numS > 0)
+	{
+		TransNum = spi_dataTransform1(pObj->tx_buf, (Uint8 *)(p_buf+SendCnt*SPI_BUFFER_SIZE/2), numS);
+		pObj->spiTrans.len		= TransNum;
+		if(ispiRtn != TransNum)
+		{
+			errCnt++;
+			if(ispiRtn == 1 || ispiRtn == 0)
+			{
+				printf(" spi[%d] spi transfer block code %d, reset fifo\n", pObj->spiuart, ispiRtn);
+				sync422_spi_devreset(pObj->spiuart);
+			}
+		}
+		SendTotal += numS;
+	}
+
+	#elif (SPIDEVFORMAT == SPIDEVFORMAT2)
+	while(numS > SPI_BUFFER_SIZE)
+	{
+		TransNum = spi_dataTransform2(pObj->tx_buf, (Uint8 *)(p_buf+SendCnt*SPI_BUFFER_SIZE), SPI_BUFFER_SIZE);
+		pObj->spiTrans.len		= TransNum;
+		ispiRtn = spi_transfer(pObj->fd, &pObj->spiTrans);
+		if(ispiRtn != TransNum)
+		{
+			errCnt++;
+			if(ispiRtn == 1 || ispiRtn == 0)
+			{
+				printf(" spi[%d] spi transfer block code %d, reset fifo\n", pObj->spiuart, ispiRtn);
+				sync422_spi_devreset(pObj->spiuart);
+				numS = 0;
+				break;
+			}
+		}
+		SendCnt ++;
+		numS -= SPI_BUFFER_SIZE;
+		SendTotal += SPI_BUFFER_SIZE;
+	}
+	if(numS > 0)
+	{
+		TransNum = spi_dataTransform2(pObj->tx_buf, (Uint8 *)(p_buf+SendCnt*SPI_BUFFER_SIZE), numS);
+		pObj->spiTrans.len		= TransNum;
+		ispiRtn = spi_transfer(pObj->fd, &pObj->spiTrans);
+		if(ispiRtn != TransNum)
+		{
+			errCnt++;
+			if(ispiRtn == 1 || ispiRtn == 0)
+			{
+				printf(" spi[%d] spi transfer block code %d, reset fifo\n", pObj->spiuart, ispiRtn);
+				sync422_spi_devreset(pObj->spiuart);
+			}
+		}
+		SendTotal += numS;
+	}
+	#endif
+	t2=OSA_getCurTimeInMsec();
+#endif
+
+	if(pObj->dataClock == SYNC422_CLOCK_2M)
+		waitMs = (SendTotal) / 240;	// (1.92*1000/8);
+	else if(pObj->dataClock == SYNC422_CLOCK_4M)
+		waitMs = (SendTotal) / 480;	// (3.84*1000/8);
+	else /*if(pObj->dataClock == SYNC422_CLOCK_8M)*/
+		waitMs = (SendTotal) / 960;	// (7.68*1000/8);
+	#if (SPIDEVFORMAT == SPIDEVFORMAT1)
+	waitMs = waitMs + (t2-t1);
+	#elif (SPIDEVFORMAT == SPIDEVFORMAT2)
+	waitMs = waitMs - (t2-t1);
+	#endif
+	{
+		#if (DATAFORMAT == DATAFORMAT1)
+		ENC_EVENTHEADER *pDataHead = (ENC_EVENTHEADER *)p_buf;
+		#elif  (DATAFORMAT == DATAFORMAT2)
+		ENC_EVENTHEADER *pDataHead = (ENC_EVENTHEADER *)(p_buf+3);		// ENC_EVENTHEADER start from ENC_USR54HEADER.data
+		#endif
+		//if(((t2-t1) > 0) || ((pDataHead->transno % 25) == 1))
+		if((pDataHead->transno % 250) == 1)
+		{
+			printf(" spi[%d] dtype[%x] packet[%04x] len:%d spiuse %dms need wait:%dms\n", 
+					pObj->spiuart, pDataHead->dtype[1], pDataHead->transno, SendTotal, (t2-t1), waitMs);
+		}
+	}
+	if(waitMs > 0)
+		OSA_waitMsecs(waitMs);
+
+	if(errCnt){
+		printf(" send data failed %d \n", errCnt);
+		return -1;
+	}
+
+	return (SendTotal-TailLength);
+}
+
+static int spi_dev_write(long context, unsigned char *buf, int len)
 {
 	Sync422_TransObj *pObj = (Sync422_TransObj *)context;
 	int SendCnt = 0, TransNum = 0, errCnt = 0, SendTotal = 0;
@@ -162,11 +319,11 @@ static int spi_dev_write_withdelay(long context, unsigned char *buf, int len)
 	numS += TailLength;
 	#elif (SPIDEVFORMAT == SPIDEVFORMAT2)
 	if(numS % 4)
+	{
 		TailLength = 20-(numS%4); //TailLength = 16+4-(numS%4); //16bytes
-	else
-		TailLength = 16;  //16bytes
-	memset(p_buf+numS, 0xFF, TailLength);
-	numS += TailLength;
+		memset(p_buf+numS, 0xFF, TailLength);
+		numS += TailLength;
+	}
 	#endif
 	// add packet interval end
 
@@ -215,17 +372,6 @@ static int spi_dev_write_withdelay(long context, unsigned char *buf, int len)
 	t2=OSA_getCurTimeInMsec();
 #endif
 
-	if(pObj->dataClock == SYNC422_CLOCK_2M)
-		waitMs = (SendTotal) / 240;	// (1.92*1000/8);
-	else if(pObj->dataClock == SYNC422_CLOCK_4M)
-		waitMs = (SendTotal) / 480;	// (3.84*1000/8);
-	else /*if(pObj->dataClock == SYNC422_CLOCK_8M)*/
-		waitMs = (SendTotal) / 960;	// (7.68*1000/8);
-	#if (SPIDEVFORMAT == SPIDEVFORMAT1)
-	waitMs = waitMs + (t2-t1);
-	#elif (SPIDEVFORMAT == SPIDEVFORMAT2)
-	waitMs = waitMs - (t2-t1);
-	#endif
 	{
 		#if (DATAFORMAT == DATAFORMAT1)
 		ENC_EVENTHEADER *pDataHead = (ENC_EVENTHEADER *)p_buf;
@@ -235,12 +381,10 @@ static int spi_dev_write_withdelay(long context, unsigned char *buf, int len)
 		//if(((t2-t1) > 0) || ((pDataHead->transno % 25) == 1))
 		if((pDataHead->transno % 250) == 1)
 		{
-			printf(" spi[%d] dtype[%x] packet[%04x] len:%d spiuse %dms need wait:%dms\n", 
-					pObj->spiuart, pDataHead->dtype[1], pDataHead->transno, SendTotal, (t2-t1), waitMs);
+			printf(" spi[%d] dtype[%x] packet[%04x] len:%d spiuse %dms\n", 
+					pObj->spiuart, pDataHead->dtype[1], pDataHead->transno, SendTotal, (t2-t1));
 		}
 	}
-	if(waitMs > 0)
-		OSA_waitMsecs(waitMs);
 
 	if(errCnt){
 		printf(" send data failed %d \n", errCnt);
@@ -656,7 +800,7 @@ static void* sync422_spi_sendTask(void *pPrm)
 
 			if(!pObj->dataPause)
 				rtnLen = spi_dev_write_withdelay((long)pObj, pObj->data_buf, numS);
-				//rtnLen = Sched_h26x_Scheder(dtype, pObj->data_buf, numS, 0, rdSchePrm.pktPiece, spi_dev_write_withdelay, (long)pObj);
+				//rtnLen = Sched_h26x_Scheder(dtype, pObj->data_buf, numS, 0, rdSchePrm.pktPiece, spi_dev_write, (long)pObj);
 
 			OSA_bufPutEmpty(&pObj->ringQue, bufId);
 		}
@@ -773,6 +917,32 @@ int sync422_spi_destory(int uart)
 	}
 
 	return status;
+}
+
+int sync422_spi_devreset(int uart)
+{
+	Sync422_TransObj *pObj = &g_sync422_TransObj[uart];
+
+#if SPIDEVON
+	spi_dev_close(pObj);
+
+	//if(pObj->spiuart == 0)
+	{
+		// SPI_PORT_A
+		#if (SPIDEVFORMAT == SPIDEVFORMAT1)
+		GPIO_set(GPIO_IRP_ENABLE, 0);  //disable A_FIFOLimitIrqEnable
+		#elif (SPIDEVFORMAT == SPIDEVFORMAT2)
+		GPIO_set(GPIO_DATA_SELECT,1);  //0-config data  1-stream_data
+		#endif
+		spi_dev_open(pObj, spidevA);
+		//R_FPGAVersion(pObj);       //read the version of FPGA;  result is 0x12345;  testok;
+		setSync422_fifo_limitA(pObj, SYNC422_FIFO_UPLIMIT_A, SYNC422_FIFO_DNLIMIT_A);//14336  2048
+		setSync422_fifo_clearA(pObj);
+		setSync422_clockA(pObj, iChangeSpeed[pObj->spiuart]);
+		printf(" reset sync422-%d speed %d\n", pObj->spiuart, pObj->dataClock);
+	}
+#endif
+	return 0;
 }
 
 int sync422_spi_speed(int uart, int ispeed)
