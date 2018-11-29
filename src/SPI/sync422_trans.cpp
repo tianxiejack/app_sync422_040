@@ -14,6 +14,7 @@
 #include "sync422_trans.h"
 #include "vidScheduler.h"
 
+#define DEBUGMODE	1
 #define SPIDEVON	1
 
 #define DATAFORMAT1	1
@@ -167,6 +168,7 @@ static int spi_dev_write(long context, unsigned char *buf, int len)
 	t2=OSA_getCurTimeInMsec();
 #endif
 
+#if DEBUGMODE
 	{
 		#if (DATAFORMAT == DATAFORMAT1)
 		ENC_EVENTHEADER *pDataHead = (ENC_EVENTHEADER *)p_buf;
@@ -179,9 +181,9 @@ static int spi_dev_write(long context, unsigned char *buf, int len)
 					pObj->spiuart, pDataHead->dtype[1], pDataHead->transno, SendTotal, (t2-t1));
 		}
 	}
-
+#endif
 	if(errCnt){
-		printf(" send data failed %d \n", errCnt);
+		//printf(" send data failed %d \n", errCnt);
 		return -1;
 	}
 
@@ -418,6 +420,7 @@ static void* sync422_spi_sendTask(void *pPrm)
 				{
 					// middle piece
 					UsrTailLen = 252;
+					memset(pObj->UsrHead.data, 0xFF, 252);
 					memcpy(pObj->UsrHead.data, p_bufPiece, UsrTailLen);
 				}
 				pObj->UsrHead.cntno = (pObj->UsrHead.cntno+1)%0xFF;
@@ -425,12 +428,13 @@ static void* sync422_spi_sendTask(void *pPrm)
 				//printf(" piece[%d] addr %lx len=%d\n", i, (long)p_bufPiece, UsrTailLen);
 				memcpy((p_buf+(i*UsrHeadLen)), &pObj->UsrHead, UsrHeadLen);
 			}
+#if DEBUGMODE
 			if((pObj->DataHead.transno % 25) == 1)
 			{
 				printf(" send dtype[%x] packet[%04x] len:%d to spidev\n", 
 						pObj->DataHead.dtype[1], pObj->DataHead.transno, numS);
 			}
-
+#endif
 			#endif
 			// for PROJ_AXGS040 end
 
@@ -668,7 +672,6 @@ int sync422_ontime_ctrl(CTRL_T icmd, int dtype, int iprm)
 	return 0;
 }
 
-#define DEBUGMODE	1
 #if DEBUGMODE
 static OSA_ThrHndl demoTskHndl[2];
 static bool demoTskLoop[2];
@@ -777,7 +780,8 @@ static void* Sync422_sendTask_demo(void *pPrm)
 					//printf(" databuf cnt=%d pkt len=%d\n", runCnt, pktLen);
 					//rtnLen = spi_dev_write_withdelay((long)pObj, pStart, pktLen);
 					rtnLen = sync422_ontime_video(dtype, pStart, pktLen);
-					OSA_waitMsecs(demoIntervalDelay);
+					if(demoIntervalDelay > 0)
+						OSA_waitMsecs(demoIntervalDelay);
 					if(rtnLen >= 0)
 					{
 						totalLen += rtnLen;
@@ -794,7 +798,8 @@ static void* Sync422_sendTask_demo(void *pPrm)
 						//printf(" databuf last cnt=%d pkt len=%d\n", runCnt, rdLen);
 						//rtnLen = spi_dev_write_withdelay((long)pObj, pStart, rdLen);
 						rtnLen = sync422_ontime_video(dtype, pStart, rdLen);
-						OSA_waitMsecs(demoIntervalDelay);
+						if(demoIntervalDelay > 0)
+							OSA_waitMsecs(demoIntervalDelay);
 						if(rtnLen >= 0)
 						{
 							totalLen += rtnLen;
